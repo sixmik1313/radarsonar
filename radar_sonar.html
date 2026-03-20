@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>SONAR // RADAR</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+:root {
+  --g: #00ff41;
+  --g2: #00cc33;
+  --g3: rgba(0,255,65,0.12);
+  --r: #ff003c;
+  --b: #00cfff;
+  --o: #ff8800;
+  --bg: #000d02;
+  --panel: rgba(0,10,3,0.96);
+  --border: rgba(0,255,65,0.18);
+}
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--g);font-family:'Share Tech Mono',monospace;-webkit-tap-highlight-color:transparent;user-select:none;}
+
+/* Scanlines */
+body::before{content:'';position:fixed;inset:0;z-index:900;pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.08) 3px,rgba(0,0,0,0.08) 4px);}
+body::after{content:'';position:fixed;inset:0;z-index:899;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 40%,rgba(0,0,0,0.65) 100%);}
+
+/* ── APP ── */
+#app{position:fixed;inset:0;display:flex;flex-direction:column;}
+
+/* ── HEADER ── */
+header{
+  height:42px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 14px;
+  background:var(--panel);border-bottom:1px solid var(--border);
+  z-index:20;
+}
+.logo{font-family:'Orbitron',sans-serif;font-weight:900;font-size:.95rem;letter-spacing:.35em;
+  text-shadow:0 0 10px var(--g),0 0 28px var(--g);animation:lg 3s ease-in-out infinite;}
+@keyframes lg{0%,100%{text-shadow:0 0 10px var(--g),0 0 28px var(--g);}50%{text-shadow:0 0 18px var(--g),0 0 55px var(--g),0 0 90px var(--g);}}
+
+.hstats{display:flex;gap:16px;font-size:.6rem;}
+.hs{display:flex;flex-direction:column;align-items:center;gap:1px;}
+.hs-l{opacity:.4;font-size:.5rem;letter-spacing:.1em;}
+.hs-v{color:var(--b);font-weight:bold;}
+.hs-v.alert{color:var(--r);animation:blink .5s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ── BODY ── */
+.body{flex:1;display:flex;overflow:hidden;position:relative;}
+
+/* ── RADAR CANVAS ── */
+#radar-wrap{
+  flex:1;position:relative;background:#000;
+  display:flex;align-items:center;justify-content:center;
+}
+#radar{display:block;}
+
+/* ── SIDE PANEL ── */
+.panel{
+  width:200px;flex-shrink:0;
+  background:var(--panel);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;z-index:10;
+  transition:width .26s cubic-bezier(.4,0,.2,1),opacity .26s;
+}
+.panel.closed{width:0;opacity:0;pointer-events:none;}
+
+.psec{border-bottom:1px solid var(--border);padding:10px 12px;flex-shrink:0;}
+.pt{font-family:'Orbitron',sans-serif;font-size:.48rem;letter-spacing:.2em;opacity:.45;
+  margin-bottom:7px;padding-bottom:4px;border-bottom:1px solid rgba(0,255,65,.1);white-space:nowrap;}
+
+/* Panel toggle */
+#ptoggle{
+  position:absolute;top:50%;right:0;transform:translateY(-50%);
+  width:18px;height:40px;z-index:30;
+  background:var(--panel);border:1px solid var(--border);border-right:none;
+  color:var(--g);font-size:.6rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s;
+}
+#ptoggle:hover{background:rgba(0,255,65,.12);}
+
+/* Sliders */
+.sl-row{display:flex;flex-direction:column;gap:3px;margin-bottom:7px;font-size:.57rem;}
+.sl-row label{display:flex;justify-content:space-between;}
+.sl-row input[type=range]{width:100%;accent-color:var(--g);height:3px;cursor:pointer;}
+
+/* Alert log */
+#alert-log{display:flex;flex-direction:column;gap:3px;max-height:140px;overflow:hidden;}
+.alog-item{
+  font-size:.55rem;padding:4px 6px;
+  border-left:2px solid var(--r);background:rgba(255,0,60,.07);
+  animation:fadein .2s ease-out;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+@keyframes fadein{from{opacity:0;transform:translateX(-4px);}to{opacity:1;transform:none;}}
+.no-alert{font-size:.55rem;opacity:.3;font-style:italic;}
+
+/* Sensitivity meter */
+.meter-wrap{height:6px;background:rgba(0,255,65,.1);border:1px solid var(--border);margin-top:5px;}
+.meter-fill{height:100%;background:var(--g);width:0%;transition:width .1s;box-shadow:0 0 6px var(--g);}
+
+/* Cam mode toggle */
+.mode-btns{display:flex;gap:5px;flex-wrap:wrap;}
+.mbtn{
+  font-family:'Share Tech Mono',monospace;font-size:.55rem;
+  padding:4px 8px;background:transparent;
+  border:1px solid var(--border);color:var(--g);cursor:pointer;
+  letter-spacing:.08em;transition:all .15s;
+}
+.mbtn.active,.mbtn:hover{background:rgba(0,255,65,.12);border-color:var(--g);}
+
+/* ── START SCREEN ── */
+#start{
+  position:fixed;inset:0;z-index:800;
+  background:rgba(0,6,1,.97);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+}
+.slogo{font-family:'Orbitron',sans-serif;font-weight:900;
+  font-size:clamp(1.8rem,6vw,3.5rem);letter-spacing:.4em;text-align:center;
+  text-shadow:0 0 20px var(--g),0 0 60px var(--g);animation:lg 2s ease-in-out infinite;}
+.ssub{font-size:.7rem;opacity:.45;letter-spacing:.2em;text-align:center;}
+.sfeats{font-size:.62rem;opacity:.55;text-align:center;line-height:2;
+  border:1px solid var(--border);padding:11px 20px;max-width:300px;}
+.sfeats em{color:var(--o);font-style:normal;}
+.sbtn{
+  font-family:'Orbitron',sans-serif;font-size:.82rem;letter-spacing:.3em;
+  padding:13px 38px;background:transparent;color:var(--g);border:2px solid var(--g);cursor:pointer;
+  box-shadow:0 0 16px rgba(0,255,65,.2),inset 0 0 16px rgba(0,255,65,.04);transition:all .2s;
+}
+.sbtn:hover,.sbtn:active{background:var(--g);color:#000;box-shadow:0 0 45px rgba(0,255,65,.9);}
+.pwrap{width:240px;height:3px;background:rgba(0,255,65,.1);display:none;}
+.pfill{height:100%;background:var(--g);width:0%;transition:width .3s;box-shadow:0 0 8px var(--g);}
+#pmsg{font-size:.62rem;opacity:.5;letter-spacing:.1em;min-height:1em;}
+
+/* hidden video for diff */
+#cam{display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">◈ SONAR</div>
+    <div class="hstats">
+      <div class="hs"><span class="hs-l">CONTACTS</span><span class="hs-v" id="h-contacts">0</span></div>
+      <div class="hs"><span class="hs-l">INTENSITÉ</span><span class="hs-v" id="h-intensity">0%</span></div>
+      <div class="hs"><span class="hs-l">BALAYAGE</span><span class="hs-v" id="h-sweep">--°</span></div>
+      <div class="hs"><span class="hs-l">STATUS</span><span class="hs-v" id="h-status">INIT</span></div>
+    </div>
+  </header>
+
+  <div class="body">
+    <div id="radar-wrap">
+      <canvas id="radar"></canvas>
+    </div>
+
+    <!-- Panel toggle -->
+    <button id="ptoggle" onclick="togglePanel()">◁</button>
+
+    <div class="panel" id="panel">
+      <div class="psec">
+        <div class="pt">// SENSIBILITÉ</div>
+        <div class="sl-row">
+          <label><span>Détection</span><span id="lbl-sens" style="color:var(--o)">35</span></label>
+          <input type="range" id="sl-sens" min="5" max="80" value="35" oninput="updateParams()">
+        </div>
+        <div class="sl-row">
+          <label><span>Vitesse sweep</span><span id="lbl-spd" style="color:var(--b)">2.0°</span></label>
+          <input type="range" id="sl-spd" min="0.5" max="5" step="0.5" value="2" oninput="updateParams()">
+        </div>
+        <div class="sl-row">
+          <label><span>Persistance</span><span id="lbl-fade" style="color:var(--g)">0.94</span></label>
+          <input type="range" id="sl-fade" min="0.80" max="0.99" step="0.01" value="0.94" oninput="updateParams()">
+        </div>
+        <div style="font-size:.55rem;margin-top:4px;opacity:.5;">Niveau mouvement</div>
+        <div class="meter-wrap"><div class="meter-fill" id="meter"></div></div>
+      </div>
+
+      <div class="psec">
+        <div class="pt">// MODE CAMÉRA</div>
+        <div class="mode-btns">
+          <button class="mbtn active" id="btn-rear" onclick="setCamera('environment')">ARRIÈRE</button>
+          <button class="mbtn" id="btn-front" onclick="setCamera('user')">AVANT</button>
+        </div>
+      </div>
+
+      <div class="psec" style="flex:1">
+        <div class="pt">// JOURNAL ALERTES</div>
+        <div id="alert-log"><div class="no-alert">SILENCE...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- START -->
+<div id="start">
+  <div class="slogo">SONAR<br><span style="font-size:.4em;opacity:.5;letter-spacing:.6em">MK-IV</span></div>
+  <div class="ssub">// RADAR DE MOUVEMENT TEMPS RÉEL //</div>
+  <div class="sfeats">
+    ✦ Analyse pixel-par-pixel via webcam<br>
+    <em>✦ Sweep rotatif 360° style sonar naval</em><br>
+    ✦ Contacts détectés sur écran radial<br>
+    <em>✦ Persistance des échos lumineux</em><br>
+    ✦ Alertes sonores et visuelles
+  </div>
+  <button class="sbtn" onclick="boot()">▶ ACTIVER SONAR</button>
+  <div class="pwrap" id="pwrap"><div class="pfill" id="pfill"></div></div>
+  <div id="pmsg"></div>
+</div>
+
+<video id="cam" autoplay muted playsinline></video>
+
+<script>
+// ══════════════════════════════════════
+//  PARAMS
+// ══════════════════════════════════════
+let THRESHOLD  = 35;   // motion diff threshold (0-255)
+let SWEEP_SPEED = 2.0; // degrees per frame
+let FADE        = 0.94; // radar persistence
+
+function updateParams() {
+  THRESHOLD   = parseInt(document.getElementById('sl-sens').value);
+  SWEEP_SPEED = parseFloat(document.getElementById('sl-spd').value);
+  FADE        = parseFloat(document.getElementById('sl-fade').value);
+  document.getElementById('lbl-sens').textContent = THRESHOLD;
+  document.getElementById('lbl-spd').textContent  = SWEEP_SPEED.toFixed(1)+'°';
+  document.getElementById('lbl-fade').textContent = FADE.toFixed(2);
+}
+
+// ══════════════════════════════════════
+//  PANEL
+// ══════════════════════════════════════
+let panelOpen = true;
+function togglePanel() {
+  panelOpen = !panelOpen;
+  document.getElementById('panel').classList.toggle('closed', !panelOpen);
+  document.getElementById('ptoggle').textContent = panelOpen ? '▷' : '◁';
+  setTimeout(resizeRadar, 280);
+}
+
+// ══════════════════════════════════════
+//  CAMERA
+// ══════════════════════════════════════
+let stream = null;
+let facingMode = 'environment';
+const video = document.getElementById('cam');
+
+async function startCamera() {
+  if (stream) stream.getTracks().forEach(t=>t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({
+    video:{facingMode, width:{ideal:320}, height:{ideal:240}},
+    audio:false
+  });
+  video.srcObject = stream;
+  await new Promise(r => video.onloadedmetadata = r);
+  await video.play();
+}
+
+async function setCamera(mode) {
+  facingMode = mode;
+  document.getElementById('btn-rear').classList.toggle('active', mode==='environment');
+  document.getElementById('btn-front').classList.toggle('active', mode==='user');
+  try { await startCamera(); prevFrame = null; }
+  catch(e){}
+}
+
+// ══════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════
+let radarCanvas, radarCtx;
+let diffCanvas, diffCtx;
+
+async function boot() {
+  const btn = document.querySelector('.sbtn');
+  btn.disabled=true; btn.textContent='INITIALISATION...';
+  document.getElementById('pwrap').style.display='block';
+  pmsg('▸ Accès caméra...'); pfill(15);
+
+  try { await startCamera(); }
+  catch(e) { pmsg('✗ Caméra refusée.'); btn.disabled=false; btn.textContent='▶ RÉESSAYER'; return; }
+
+  pmsg('▸ Calibration capteurs...'); pfill(60);
+  await new Promise(r=>setTimeout(r,600));
+  pfill(100); pmsg('▸ SONAR ACTIF');
+  await new Promise(r=>setTimeout(r,300));
+
+  document.getElementById('start').style.display='none';
+  document.getElementById('h-status').textContent='ACTIF';
+
+  radarCanvas = document.getElementById('radar');
+  radarCtx    = radarCanvas.getContext('2d');
+  diffCanvas  = document.createElement('canvas');
+  diffCtx     = diffCanvas.getContext('2d');
+
+  resizeRadar();
+  window.addEventListener('resize', resizeRadar);
+  window.addEventListener('orientationchange', ()=>setTimeout(resizeRadar,400));
+
+  requestAnimationFrame(frame);
+}
+
+function pmsg(t){document.getElementById('pmsg').textContent=t;}
+function pfill(p){document.getElementById('pfill').style.width=p+'%';}
+
+function resizeRadar() {
+  const wrap = document.getElementById('radar-wrap');
+  const r    = wrap.getBoundingClientRect();
+  const size = Math.min(r.width, r.height) - 20;
+  radarCanvas.width  = size;
+  radarCanvas.height = size;
+  // clear persistence
+  if (radarCtx) {
+    radarCtx.fillStyle = '#000d02';
+    radarCtx.fillRect(0,0,size,size);
+  }
+}
+
+// ══════════════════════════════════════
+//  MOTION DETECTION
+// ══════════════════════════════════════
+let prevFrame = null;
+const SAMPLE_W = 64;
+const SAMPLE_H = 48;
+
+// Returns grid of motion values [0..1], shape SAMPLE_H × SAMPLE_W
+function detectMotion() {
+  if (!video.videoWidth) return null;
+  diffCanvas.width  = SAMPLE_W;
+  diffCanvas.height = SAMPLE_H;
+  diffCtx.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
+  const current = diffCtx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
+
+  if (!prevFrame) { prevFrame = current.slice(); return null; }
+
+  const grid = [];
+  let totalDiff = 0;
+  for (let y=0; y<SAMPLE_H; y++) {
+    const row = [];
+    for (let x=0; x<SAMPLE_W; x++) {
+      const i = (y*SAMPLE_W+x)*4;
+      const dr = Math.abs(current[i]   - prevFrame[i]);
+      const dg = Math.abs(current[i+1] - prevFrame[i+1]);
+      const db = Math.abs(current[i+2] - prevFrame[i+2]);
+      const diff = (dr+dg+db)/3;
+      const val  = diff > THRESHOLD ? Math.min(1, diff/255) : 0;
+      row.push(val);
+      totalDiff += val;
+    }
+    grid.push(row);
+  }
+  prevFrame = current.slice();
+  return { grid, total: totalDiff/(SAMPLE_W*SAMPLE_H) };
+}
+
+// Map camera pixel (x,y) → radar angle
+// Camera: x=0 left, x=W right, y=0 top, y=H bottom
+// Radar: angle 0 = top, clockwise
+function camToAngle(cx, cy) {
+  // cx/cy in [0,1]
+  const dx = cx - 0.5;
+  const dy = cy - 0.5;
+  return Math.atan2(dx, -dy); // 0=top, CW
+}
+
+// ══════════════════════════════════════
+//  RADAR STATE
+// ══════════════════════════════════════
+let sweepAngle = 0; // radians, 0=top, CW
+let contacts   = []; // {x, y, r, intensity, age}
+let alertLines = [];
+let frameNum   = 0;
+let totalContactCount = 0;
+
+// ══════════════════════════════════════
+//  MAIN FRAME
+// ══════════════════════════════════════
+function frame() {
+  frameNum++;
+  const W = radarCanvas.width;
+  const H = radarCanvas.height;
+  const CX = W/2, CY = H/2;
+  const R  = W/2 - 4;
+
+  // ── Motion ──
+  const motion = detectMotion();
+  let motionLevel = 0;
+  let newContacts = 0;
+
+  if (motion) {
+    motionLevel = motion.total;
+    // Convert motion grid to radar contacts
+    for (let gy=0; gy<SAMPLE_H; gy++) {
+      for (let gx=0; gx<SAMPLE_W; gx++) {
+        const val = motion.grid[gy][gx];
+        if (val < 0.01) continue;
+        const camX = gx/SAMPLE_W;
+        const camY = gy/SAMPLE_H;
+        const angle = camToAngle(camX, camY); // radians
+        const dist  = Math.hypot(camX-0.5, camY-0.5) * 2; // [0..1]
+        // Only show contacts near current sweep angle (within 15°)
+        const dAngle = angleDiff(angle, sweepAngle);
+        if (Math.abs(dAngle) < 0.26) { // ~15 deg
+          contacts.push({
+            angle, dist: Math.min(dist, 0.95),
+            intensity: val, age: 0
+          });
+          newContacts++;
+        }
+      }
+    }
+    if (newContacts > 0) totalContactCount += newContacts;
+  }
+
+  // ── Draw radar ──
+  drawRadar(W, H, CX, CY, R, motionLevel, newContacts);
+
+  // ── Advance sweep ──
+  sweepAngle = (sweepAngle + SWEEP_SPEED * Math.PI/180) % (Math.PI*2);
+
+  // ── Age & prune contacts ──
+  contacts = contacts.filter(c => {
+    c.age++;
+    return c.age < 180;
+  });
+
+  // ── UI ──
+  const liveContacts = contacts.filter(c=>c.age<30).length;
+  document.getElementById('h-contacts').textContent = liveContacts;
+  const intPct = Math.min(100, Math.round(motionLevel*800));
+  document.getElementById('h-intensity').textContent = intPct+'%';
+  const el = document.getElementById('h-intensity');
+  el.className = 'hs-v' + (intPct>30?' alert':'');
+  document.getElementById('h-sweep').textContent = Math.round(sweepAngle*180/Math.PI)+'°';
+  document.getElementById('meter').style.width = Math.min(100,intPct)+'%';
+  document.getElementById('meter').style.background = intPct>50 ? 'var(--r)' : intPct>20 ? 'var(--o)' : 'var(--g)';
+
+  // Alert log
+  if (newContacts > 5 && frameNum%15===0) {
+    addAlert(`CONTACT × ${newContacts} à ${Math.round(sweepAngle*180/Math.PI)}°`);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+function angleDiff(a, b) {
+  let d = a - b;
+  while (d > Math.PI)  d -= Math.PI*2;
+  while (d < -Math.PI) d += Math.PI*2;
+  return d;
+}
+
+// ══════════════════════════════════════
+//  DRAW RADAR
+// ══════════════════════════════════════
+function drawRadar(W, H, CX, CY, R, motionLevel, newContacts) {
+  const ctx = radarCtx;
+
+  // ── Fade (persistence) ──
+  ctx.globalAlpha = 1-FADE;
+  ctx.fillStyle = '#000d02';
+  ctx.fillRect(0,0,W,H);
+  ctx.globalAlpha = 1;
+
+  // ── Clip to circle ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX,CY,R,0,Math.PI*2);
+  ctx.clip();
+
+  // ── Ring grid ──
+  const rings = 4;
+  for (let i=1;i<=rings;i++) {
+    const r = R*(i/rings);
+    ctx.beginPath(); ctx.arc(CX,CY,r,0,Math.PI*2);
+    ctx.strokeStyle = 'rgba(0,255,65,0.12)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // ── Cross hairs ──
+  ctx.strokeStyle = 'rgba(0,255,65,0.1)';
+  ctx.lineWidth = 1;
+  for (let a=0;a<4;a++) {
+    const ang = a*Math.PI/2;
+    ctx.beginPath();
+    ctx.moveTo(CX,CY);
+    ctx.lineTo(CX+Math.sin(ang)*R, CY-Math.cos(ang)*R);
+    ctx.stroke();
+  }
+
+  // ── Diagonal lines ──
+  ctx.strokeStyle = 'rgba(0,255,65,0.05)';
+  for (let a=0;a<8;a++) {
+    const ang = a*Math.PI/4;
+    ctx.beginPath();
+    ctx.moveTo(CX,CY);
+    ctx.lineTo(CX+Math.sin(ang)*R, CY-Math.cos(ang)*R);
+    ctx.stroke();
+  }
+
+  // ── Sweep trail (green wedge) ──
+  const trailAngle = 80 * Math.PI/180; // 80 degree trail
+  const grad = ctx.createConicalGradient
+    ? null : null; // not available, use manual segments
+  const segments = 40;
+  for (let i=0;i<segments;i++) {
+    const t    = i/segments;
+    const a0   = sweepAngle - trailAngle*(1-t) - Math.PI/2;
+    const a1   = sweepAngle - trailAngle*(1-(i+1)/segments) - Math.PI/2;
+    const alpha = t * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(CX,CY);
+    ctx.arc(CX,CY,R,a0,a1);
+    ctx.closePath();
+    ctx.fillStyle = `rgba(0,255,65,${alpha})`;
+    ctx.fill();
+  }
+
+  // ── Sweep line ──
+  const sx = CX + Math.cos(sweepAngle - Math.PI/2)*R;
+  const sy = CY + Math.sin(sweepAngle - Math.PI/2)*R;
+  ctx.beginPath(); ctx.moveTo(CX,CY); ctx.lineTo(sx,sy);
+  ctx.strokeStyle = 'rgba(0,255,65,0.9)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(0,255,65,0.8)'; ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // ── Contacts (blips) ──
+  for (const c of contacts) {
+    const ageFade = Math.max(0, 1 - c.age/180);
+    const fresh   = Math.max(0, 1 - c.age/30);
+    const bx = CX + Math.sin(c.angle)*c.dist*R;
+    const by = CY - Math.cos(c.angle)*c.dist*R;
+    const sz = 2 + c.intensity*4 + fresh*6;
+
+    // glow
+    const g2 = ctx.createRadialGradient(bx,by,0,bx,by,sz*3);
+    g2.addColorStop(0, `rgba(0,255,65,${ageFade*0.9})`);
+    g2.addColorStop(0.4, `rgba(0,255,65,${ageFade*0.3})`);
+    g2.addColorStop(1, 'transparent');
+    ctx.fillStyle = g2;
+    ctx.beginPath(); ctx.arc(bx,by,sz*3,0,Math.PI*2); ctx.fill();
+
+    // core dot
+    ctx.fillStyle = fresh>0.3 ? '#ffffff' : `rgba(0,255,65,${ageFade})`;
+    ctx.beginPath(); ctx.arc(bx,by,Math.max(1.5,sz*0.5),0,Math.PI*2); ctx.fill();
+  }
+
+  ctx.restore();
+
+  // ── Outer ring ──
+  ctx.beginPath(); ctx.arc(CX,CY,R,0,Math.PI*2);
+  ctx.strokeStyle = 'rgba(0,255,65,0.5)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(0,255,65,0.4)'; ctx.shadowBlur = 12;
+  ctx.stroke(); ctx.shadowBlur = 0;
+
+  // ── Degree labels ──
+  const labels = [[0,'N'],[90,'E'],[180,'S'],[270,'W']];
+  ctx.font = '10px "Share Tech Mono"';
+  ctx.fillStyle = 'rgba(0,255,65,0.5)';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const [deg, lbl] of labels) {
+    const rad = deg*Math.PI/180 - Math.PI/2;
+    const lx = CX + Math.cos(rad)*(R+12);
+    const ly = CY + Math.sin(rad)*(R+12);
+    ctx.fillText(lbl, lx, ly);
+  }
+
+  // ── Centre dot ──
+  ctx.beginPath(); ctx.arc(CX,CY,3,0,Math.PI*2);
+  ctx.fillStyle = 'rgba(0,255,65,0.8)'; ctx.fill();
+
+  // ── Alert flash if lots of motion ──
+  if (motionLevel > 0.08) {
+    ctx.beginPath(); ctx.arc(CX,CY,R,0,Math.PI*2);
+    ctx.strokeStyle = `rgba(255,0,60,${Math.min(0.6,motionLevel*4)})`;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+}
+
+// ══════════════════════════════════════
+//  ALERT LOG
+// ══════════════════════════════════════
+let alertLines2 = [];
+function addAlert(msg) {
+  const ts = new Date().toLocaleTimeString('fr',{hour12:false});
+  alertLines2.unshift(`[${ts}] ${msg}`);
+  if (alertLines2.length>8) alertLines2.pop();
+  const el = document.getElementById('alert-log');
+  el.innerHTML = alertLines2.map(l=>`<div class="alog-item">${l}</div>`).join('');
+}
+</script>
+</body>
+</html>
